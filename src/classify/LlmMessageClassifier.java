@@ -33,8 +33,9 @@ public class LlmMessageClassifier implements MessageClassifier {
             return new ClassificationResult(Branch.ALL, Urgency.ROUTINE);
         }
 
-        String geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" +
-                apiKey;
+        String geminiUrl =
+                "https://generativelanguage.googleapis.com/v1beta" +
+                        "/models/gemini-3-flash-preview:generateContent?key=" + apiKey;
 
         String prompt = "Analyze the following decrypted military message: \"" + decryptedText + "\". "
                 + "Determine its destination branch and its urgency level. "
@@ -58,7 +59,7 @@ public class LlmMessageClassifier implements MessageClassifier {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(geminiUrl))
-                    .timeout(Duration.ofSeconds(15))
+                    .timeout(Duration.ofSeconds(30))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
