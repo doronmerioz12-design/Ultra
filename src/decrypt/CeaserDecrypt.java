@@ -2,23 +2,11 @@ package decrypt;
 
 import model.Message;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-
-
 public class CeaserDecrypt implements DecryptionStrategy {
 
     private static final int CYCLE = 26;
 
-    private static final String ANALYSIS_API_URL = "http://localhost:8080/api/v1/analyze-caesar";
-
-    // English letter frequency (A-Z), used for local fallback scoring
+    // English letter frequency (A-Z), used for scoring candidate decryptions
     private static final double[] ENGLISH_FREQ = {
             0.0817, 0.0150, 0.0278, 0.0425, 0.1270, 0.0223, 0.0202,
             0.0609, 0.0697, 0.0015, 0.0077, 0.0403, 0.0241, 0.0675,
@@ -39,38 +27,6 @@ public class CeaserDecrypt implements DecryptionStrategy {
             answers[shift] = decryptWithShift(rawMessage, shift);
         }
 
-        // Try the remote API first
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            HttpClient client = HttpClient.newHttpClient();
-
-            String jsonPayload = mapper.writeValueAsString(answers);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(ANALYSIS_API_URL))
-                    .timeout(Duration.ofSeconds(5))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                    .build();
-
-            HttpResponse<String> response =
-                    client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
-                JsonNode rootNode = mapper.readTree(response.body());
-
-                if (rootNode.has("bestAnswer")) {
-                    return rootNode.get("bestAnswer").asText();
-                }
-            }
-
-            System.err.println("API Error: Received status code " + response.statusCode());
-        } catch (Exception e) {
-            System.err.println("Failed to reach analysis API. " +
-                    "Falling back to local frequency analysis. Error: " + e.getMessage());
-        }
-
-        // Local fallback: pick the shift whose letter frequencies best match English
         return selectBestByFrequency(answers);
     }
 
