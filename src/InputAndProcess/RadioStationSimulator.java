@@ -11,9 +11,10 @@ import java.util.Scanner;
 
 public class RadioStationSimulator implements InputReciver {
 
-    private static final String dbUserName = "ULTRA";
-    private final String dbPassword = "ULTRA123";
-    private final String dbUrl = "jdbc:postgresql://localhost:5432/my_database";
+    private final String dbUserName = System.getenv().getOrDefault("ULTRA_DB_USER", "ULTRA");
+    private final String dbPassword = System.getenv().getOrDefault("ULTRA_DB_PASSWORD", "change_me");
+    private final String dbUrl = System.getenv().getOrDefault("ULTRA_DB_URL",
+            "jdbc:postgresql://localhost:5432/my_database");
 
     @Override
     public void receive() {

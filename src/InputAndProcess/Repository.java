@@ -11,9 +11,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Repository {
-    private final String dbUrl = "jdbc:postgresql://localhost:5432/my_database";
-    private final String dbUser = "ULTRA";
-    private final String dbPassword = "ULTRA123";
+    private final String dbUrl = System.getenv().getOrDefault("ULTRA_DB_URL",
+            "jdbc:postgresql://localhost:5432/my_database");
+    private final String dbUser = System.getenv().getOrDefault("ULTRA_DB_USER", "ULTRA");
+    private final String dbPassword = System.getenv().getOrDefault("ULTRA_DB_PASSWORD", "change_me");
 
     public List<Message> fetchPendingMessages() {
         List<Message> messagesToProcess = new ArrayList<>();

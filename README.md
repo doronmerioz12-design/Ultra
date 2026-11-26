@@ -92,11 +92,11 @@ Create a PostgreSQL database and user:
 
 ```sql
 CREATE DATABASE my_database;
-CREATE USER "ULTRA" WITH PASSWORD 'ULTRA123';
+CREATE USER "ULTRA" WITH PASSWORD 'change_me';
 GRANT ALL PRIVILEGES ON DATABASE my_database TO "ULTRA";
 ```
 
-The application creates its own tables on first run.
+The application creates its own tables on first run. (See `init.sql` for full RBAC database setup.)
 
 ### 2. Environment Variables
 
@@ -104,11 +104,12 @@ The application creates its own tables on first run.
 |----------|-------------|---------|
 | `GEMINI_API_KEY` | Google AI Studio API key (required for classification) | — |
 | `ULTRA_DB_URL` | PostgreSQL connection URL | `jdbc:postgresql://localhost:5432/my_database` |
-| `ARMY_DB_USER` / `ARMY_DB_PASSWORD` | Army branch DB credentials | `Army` / `Army123` |
-| `NAVY_DB_USER` / `NAVY_DB_PASSWORD` | Navy branch DB credentials | `Navy` / `Navy123` |
-| `RAF_DB_USER` / `RAF_DB_PASSWORD` | RAF branch DB credentials | `RAF` / `RAF123` |
-| `PMOFFICE_DB_USER` / `PMOFFICE_DB_PASSWORD` | PM Office DB credentials | `PMOFFICE` / `PMOFFICE123` |
-| `SHAEF_DB_USER` / `SHAEF_DB_PASSWORD` | SHAEF DB credentials | `SHAEF` / `SHAEF123` |
+| `ULTRA_DB_USER` / `ULTRA_DB_PASSWORD` | Core Ultra DB credentials | `ULTRA` / `change_me` |
+| `ARMY_DB_USER` / `ARMY_DB_PASSWORD` | Army branch DB credentials | `Army` / `change_me` |
+| `NAVY_DB_USER` / `NAVY_DB_PASSWORD` | Navy branch DB credentials | `Navy` / `change_me` |
+| `RAF_DB_USER` / `RAF_DB_PASSWORD` | RAF branch DB credentials | `RAF` / `change_me` |
+| `PMOFFICE_DB_USER` / `PMOFFICE_DB_PASSWORD` | PM Office DB credentials | `PMOFFICE` / `change_me` |
+| `SHAEF_DB_USER` / `SHAEF_DB_PASSWORD` | SHAEF DB credentials | `SHAEF` / `change_me` |
 
 ### 3. Build & Run
 
