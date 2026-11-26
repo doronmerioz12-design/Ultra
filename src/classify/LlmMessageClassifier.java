@@ -15,12 +15,39 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
+/**
+ * AI-powered implementation of {@link MessageClassifier} that uses the Google Gemini REST API
+ * ({@code gemini-3-flash-preview}) to semantically analyze decrypted military messages.
+ * <p>
+ * Features:
+ * <ul>
+ *   <li>Constructs a structured prompt enforcing a strict JSON response schema with
+ *       {@code destination} ({@link Branch}) and {@code urgency} ({@link Urgency}) fields.</li>
+ *   <li>Includes built-in request pacing ({@link #RATE_LIMIT_DELAY_MS}) and automatic retry
+ *       with backoff ({@link #RETRY_WAIT_MS}) when HTTP {@code 429} rate-limit responses occur.</li>
+ *   <li>Gracefully falls back to {@code Branch.ALL | Urgency.ROUTINE} if the API key is missing,
+ *       a network error occurs, or the response cannot be parsed.</li>
+ * </ul>
+ */
 public class LlmMessageClassifier implements MessageClassifier {
 
+    /** Base delay (in milliseconds) before each API call to respect free-tier rate limits. */
     private static final long RATE_LIMIT_DELAY_MS = 2000;
+
+    /** Maximum number of attempts when retrying rate-limited (HTTP 429) requests. */
     private static final int MAX_RETRIES = 3;
+
+    /** Backoff duration (in milliseconds) to wait after receiving an HTTP 429 status code. */
     private static final long RETRY_WAIT_MS = 30000; // 30 seconds for rate limit
 
+    /**
+     * Sends the decrypted plaintext to the Google Gemini API for semantic classification
+     * into a target military branch and urgency level.
+     *
+     * @param message       the original intercepted message object
+     * @param decryptedText the recovered plaintext to analyze
+     * @return the parsed {@link ClassificationResult}, or {@code ALL | ROUTINE} on fallback
+     */
     @Override
     public ClassificationResult classify(Message message, String decryptedText) {
         if (decryptedText == null || decryptedText.isEmpty()) {
@@ -49,6 +76,7 @@ public class LlmMessageClassifier implements MessageClassifier {
             ObjectMapper mapper = new ObjectMapper();
             HttpClient client = HttpClient.newHttpClient();
 
+            // Build the Gemini generateContent JSON request payload: {"contents": [{"parts": [{"text": "..."}]}]}
             ObjectNode textNode = mapper.createObjectNode().put("text", prompt);
             ArrayNode partsNode = mapper.createArrayNode().add(textNode);
             ObjectNode contentNode = mapper.createObjectNode().set("parts", partsNode);
@@ -64,7 +92,7 @@ public class LlmMessageClassifier implements MessageClassifier {
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
-            // Retry loop for rate limiting (429)
+            // Retry loop for rate limiting (HTTP 429)
             for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
 
                 Thread.sleep(RATE_LIMIT_DELAY_MS);
@@ -106,6 +134,7 @@ public class LlmMessageClassifier implements MessageClassifier {
             System.err.println("[Gemini Classifier] REST call failed: " + e.getMessage());
         }
 
+        // Fail-safe default routing when classification is unavailable
         return new ClassificationResult(Branch.ALL, Urgency.ROUTINE);
     }
 }

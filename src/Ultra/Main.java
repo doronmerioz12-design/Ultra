@@ -6,8 +6,21 @@ import InputAndProcess.RadioStationSimulator;
 
 import java.util.Scanner;
 
+/**
+ * Application entry point for the ULTRA (Bletchley Park Intelligence System) simulation.
+ * <p>
+ * Initializes the central {@link Ultra} orchestrator, registers all five military branch
+ * observers ({@link Army}, {@link Navy}, {@link RAF}, {@link PMOFFICE}, and {@link SHAEF}),
+ * and provides an interactive command-line menu for simulating radio message interception
+ * and triggering the decryption and intelligence routing pipeline.
+ */
 public class Main {
 
+    /**
+     * Launches the interactive CLI menu loop.
+     *
+     * @param args command-line arguments (not used)
+     */
     public static void main(String[] args) {
 
         // Set up the Ultra orchestrator with all branch observers
@@ -32,14 +45,17 @@ public class Main {
 
             switch (choice) {
                 case "1":
+                    // Launch interactive radio interception simulator
                     new RadioStationSimulator().receive();
                     break;
 
                 case "2":
+                    // Process a batch of pending messages from the database
                     ultra.processMessages();
                     break;
 
                 case "3":
+                    // Intercept new messages and immediately run the processing pipeline
                     new RadioStationSimulator().receive();
                     System.out.println("\n--- Now processing intercepted messages ---\n");
                     ultra.processMessages();

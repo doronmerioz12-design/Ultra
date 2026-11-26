@@ -9,6 +9,14 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.Scanner;
 
+/**
+ * Simulates a British radio interception station capturing enemy transmissions.
+ * <p>
+ * Prompts the operator via the command line to enter intercepted ciphertexts and their
+ * suspected cipher type ({@code CAESAR} or {@code VIGENERE}), ensures the {@code INPUT}
+ * table exists in PostgreSQL, and inserts each transmission with an initial status of
+ * {@link Progress#PENDING}.
+ */
 public class RadioStationSimulator implements InputReciver {
 
     private final String dbUserName = System.getenv().getOrDefault("ULTRA_DB_USER", "ULTRA");
@@ -16,6 +24,10 @@ public class RadioStationSimulator implements InputReciver {
     private final String dbUrl = System.getenv().getOrDefault("ULTRA_DB_URL",
             "jdbc:postgresql://localhost:5432/my_database");
 
+    /**
+     * Runs an interactive console loop to capture encrypted messages and store them
+     * in the {@code INPUT} database table until the user enters {@code -1} or an empty line.
+     */
     @Override
     public void receive() {
         Scanner sc = new Scanner(System.in);
@@ -34,6 +46,7 @@ public class RadioStationSimulator implements InputReciver {
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUserName, dbPassword);
              Statement stmt = conn.createStatement()) {
 
+            // Ensure the central INPUT queue table exists before inserting records
             stmt.execute(createTableSql);
 
             String input = cliInput(sc);
@@ -64,6 +77,12 @@ public class RadioStationSimulator implements InputReciver {
         }
     }
 
+    /**
+     * Prompts the user for the next encrypted message string.
+     *
+     * @param sc the active console {@link Scanner}
+     * @return the raw line entered by the user
+     */
     private String cliInput(Scanner sc) {
         System.out.print("Enter the encrypted message (-1 to exit): ");
         return sc.nextLine();
