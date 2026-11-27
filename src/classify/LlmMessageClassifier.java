@@ -1,13 +1,13 @@
 package classify;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import model.Branch;
 import model.ClassificationResult;
 import model.Message;
 import model.Urgency;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -17,52 +17,64 @@ import java.time.Duration;
 
 /**
  * AI-powered implementation of {@link MessageClassifier} that uses the Google Gemini REST API
- * ({@code gemini-3-flash-preview}) to semantically analyze decrypted military messages.
- * <p>
- * Features:
+ * ({@value #MODEL_NAME}) to semantically classify decrypted military intelligence messages into a
+ * destination {@link Branch} and {@link Urgency} level.
+ *
+ * <p>Key behaviors:
  * <ul>
- *   <li>Constructs a structured prompt enforcing a strict JSON response schema with
- *       {@code destination} ({@link Branch}) and {@code urgency} ({@link Urgency}) fields.</li>
- *   <li>Includes built-in request pacing ({@link #RATE_LIMIT_DELAY_MS}) and automatic retry
- *       with backoff ({@link #RETRY_WAIT_MS}) when HTTP {@code 429} rate-limit responses occur.</li>
- *   <li>Gracefully falls back to {@code Branch.ALL | Urgency.ROUTINE} if the API key is missing,
- *       a network error occurs, or the response cannot be parsed.</li>
+ *   <li>Builds a structured prompt enforcing a raw JSON object with {@code destination} and
+ *       {@code urgency} fields, then parses it via {@link ClassificationResult#parse(String)}.</li>
+ *   <li>Applies request pacing ({@link #RATE_LIMIT_DELAY_MS}) and retries HTTP {@code 429}
+ *       rate-limit responses with backoff ({@link #RETRY_WAIT_MS}).</li>
+ *   <li>Falls back safely to {@code Branch.ALL | Urgency.ROUTINE} if the API key is absent,
+ *       a network/timeout error occurs, or response parsing fails.</li>
  * </ul>
  */
 public class LlmMessageClassifier implements MessageClassifier {
 
-    /** Base delay (in milliseconds) before each API call to respect free-tier rate limits. */
+    /** Target Gemini model identifier used for intelligence triage. */
+    private static final String MODEL_NAME = "gemini-2.5-flash";
+
+    /** Base delay (in milliseconds) before each API request to smooth burst traffic. */
     private static final long RATE_LIMIT_DELAY_MS = 2000;
 
-    /** Maximum number of attempts when retrying rate-limited (HTTP 429) requests. */
+    /** Maximum number of attempts when retrying rate-limited ({@code 429}) requests. */
     private static final int MAX_RETRIES = 3;
 
-    /** Backoff duration (in milliseconds) to wait after receiving an HTTP 429 status code. */
-    private static final long RETRY_WAIT_MS = 30000; // 30 seconds for rate limit
+    /** Backoff duration (in milliseconds) to wait before retrying after an HTTP {@code 429}. */
+    private static final long RETRY_WAIT_MS = 30000;
+
+    /** Shared JSON serializer/deserializer instance. */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Shared HTTP client configured with explicit connect timeout and HTTP/1.1. */
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(15))
+            .build();
 
     /**
-     * Sends the decrypted plaintext to the Google Gemini API for semantic classification
-     * into a target military branch and urgency level.
+     * Classifies a decrypted plaintext message into a target military branch and urgency level.
      *
-     * @param message       the original intercepted message object
-     * @param decryptedText the recovered plaintext to analyze
-     * @return the parsed {@link ClassificationResult}, or {@code ALL | ROUTINE} on fallback
+     * @param message       the original intercepted message metadata
+     * @param decryptedText the recovered plaintext message to analyze
+     * @return a {@link ClassificationResult} containing branch and urgency, or
+     *         {@code ALL | ROUTINE} when classification cannot be completed
      */
     @Override
     public ClassificationResult classify(Message message, String decryptedText) {
-        if (decryptedText == null || decryptedText.isEmpty()) {
+        if (decryptedText == null || decryptedText.isBlank()) {
             return new ClassificationResult(Branch.ALL, Urgency.ROUTINE);
         }
 
         String apiKey = System.getenv("GEMINI_API_KEY");
-        if (apiKey == null || apiKey.isEmpty()) {
+        if (apiKey == null || apiKey.isBlank()) {
             System.err.println("[Gemini Classifier] ERROR: GEMINI_API_KEY environment variable is missing!");
             return new ClassificationResult(Branch.ALL, Urgency.ROUTINE);
         }
 
-        String geminiUrl =
-                "https://generativelanguage.googleapis.com/v1beta" +
-                        "/models/gemini-3-flash-preview:generateContent?key=" + apiKey;
+        String geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/"
+                + MODEL_NAME + ":generateContent?key=" + apiKey;
 
         String prompt = "Analyze the following decrypted military message: \"" + decryptedText + "\". "
                 + "Determine its destination branch and its urgency level. "
@@ -73,17 +85,13 @@ public class LlmMessageClassifier implements MessageClassifier {
                 + "Do not include markdown formatting or backticks.";
 
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            HttpClient client = HttpClient.newHttpClient();
+            ObjectNode textNode = MAPPER.createObjectNode().put("text", prompt);
+            ArrayNode partsNode = MAPPER.createArrayNode().add(textNode);
+            ObjectNode contentNode = MAPPER.createObjectNode().set("parts", partsNode);
+            ArrayNode contentsArray = MAPPER.createArrayNode().add(contentNode);
+            ObjectNode rootInput = MAPPER.createObjectNode().set("contents", contentsArray);
 
-            // Build the Gemini generateContent JSON request payload: {"contents": [{"parts": [{"text": "..."}]}]}
-            ObjectNode textNode = mapper.createObjectNode().put("text", prompt);
-            ArrayNode partsNode = mapper.createArrayNode().add(textNode);
-            ObjectNode contentNode = mapper.createObjectNode().set("parts", partsNode);
-            ArrayNode contentsArray = mapper.createArrayNode().add(contentNode);
-            ObjectNode rootInput = mapper.createObjectNode().set("contents", contentsArray);
-
-            String requestBody = mapper.writeValueAsString(rootInput);
+            String requestBody = MAPPER.writeValueAsString(rootInput);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(geminiUrl))
@@ -92,15 +100,14 @@ public class LlmMessageClassifier implements MessageClassifier {
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
-            // Retry loop for rate limiting (HTTP 429)
             for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-
                 Thread.sleep(RATE_LIMIT_DELAY_MS);
 
-                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = HTTP_CLIENT.send(
+                        request, HttpResponse.BodyHandlers.ofString());
 
                 if (response.statusCode() == 200) {
-                    JsonNode rootResponse = mapper.readTree(response.body());
+                    JsonNode rootResponse = MAPPER.readTree(response.body());
                     String geminiOutput = rootResponse
                             .path("candidates")
                             .path(0)
@@ -110,7 +117,7 @@ public class LlmMessageClassifier implements MessageClassifier {
                             .path("text")
                             .asText();
 
-                    JsonNode innerJson = mapper.readTree(geminiOutput.trim());
+                    JsonNode innerJson = MAPPER.readTree(geminiOutput.trim());
 
                     if (innerJson.has("destination") && innerJson.has("urgency")) {
                         String destination = innerJson.get("destination").asText();
@@ -119,7 +126,8 @@ public class LlmMessageClassifier implements MessageClassifier {
                     }
                 } else if (response.statusCode() == 429 && attempt < MAX_RETRIES) {
                     System.out.println("[Gemini Classifier] Rate limited. Waiting "
-                            + (RETRY_WAIT_MS / 1000) + "s before retry " + (attempt + 1) + "/" + MAX_RETRIES + "...");
+                            + (RETRY_WAIT_MS / 1000) + "s before retry "
+                            + (attempt + 1) + "/" + MAX_RETRIES + "...");
                     Thread.sleep(RETRY_WAIT_MS);
                 } else {
                     System.err.println("[Gemini API Error] Status Code: " + response.statusCode());
@@ -131,10 +139,10 @@ public class LlmMessageClassifier implements MessageClassifier {
             Thread.currentThread().interrupt();
             System.err.println("[Gemini Classifier] Interrupted during classification.");
         } catch (Exception e) {
-            System.err.println("[Gemini Classifier] REST call failed: " + e.getMessage());
+            System.err.println("[Gemini Classifier] REST call failed ("
+                    + e.getClass().getSimpleName() + "): " + e.getMessage());
         }
 
-        // Fail-safe default routing when classification is unavailable
         return new ClassificationResult(Branch.ALL, Urgency.ROUTINE);
     }
 }
